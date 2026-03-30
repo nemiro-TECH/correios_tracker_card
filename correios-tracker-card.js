@@ -15,8 +15,10 @@ class CorreiosTrackerCard extends HTMLElement {
     this._formError  = "";
   }
 
-  set hass(hass) {
+set hass(hass) {
     this._hass = hass;
+    // Impede a re-renderização do HTML se o formulário estiver aberto
+    if (this._mode !== null) return;
     this._render();
   }
 
