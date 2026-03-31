@@ -2,6 +2,7 @@
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/nemiro-TECH/correios_tracker_card)](https://github.com/nemiro-TECH/correios_tracker_card/releases)
+[![BuyMeACoffee](https://raw.githubusercontent.com/pachadotdev/buymeacoffee-badges/main/bmc-donate-yellow.svg)](https://www.buymeacoffee.com/nemiro)
 
 Um cartão Lovelace (Frontend) limpo e interativo para o Home Assistant, desenhado especificamente para acompanhar as suas encomendas através da integração [Correios Tracker](https://github.com/nemiro-TECH/correios_tracker_ha).
 
