@@ -1,8 +1,16 @@
 /**
- * Correios Tracker Card v2.3
+ * Correios Tracker Card v0.1.2
  * /config/www/community/correios_tracker/correios-tracker-card.js
  * Recurso: /local/community/correios_tracker/correios-tracker-card.js
  */
+
+/* Mostra o "badge" de versão no console (F12) do navegador */
+console.info(
+  `%c CORREIOS-TRACKER-CARD %c v0.1.2 `,
+  'color: white; background: #FFD200; font-weight: 700;',
+  'color: white; background: #004b82; font-weight: 700;'
+);
+
 class CorreiosTrackerCard extends HTMLElement {
   constructor() {
     super();
