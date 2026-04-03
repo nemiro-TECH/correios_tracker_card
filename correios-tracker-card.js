@@ -15,17 +15,17 @@ class CorreiosTrackerCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
-    this._hass       = null;
-    this._mode       = null;    // null | "add" | "edit"
-    this._editCode   = null;
-    this._editDesc   = "";      // valor atual do campo desc (sobrevive ao _render)
-    this._editInterval = 60;    // valor atual do intervalo
-    this._formError  = "";
+    this._hass        = null;
+    this._mode        = null;   // null | "add" | "edit"
+    this._editCode    = null;
+    this._editDesc    = "";
+    this._editInterval = 60;
+    this._formError   = "";
   }
 
-set hass(hass) {
+  set hass(hass) {
     this._hass = hass;
-    // Impede a re-renderização do HTML se o formulário estiver aberto
+    // Não re-renderiza enquanto formulário está aberto (preserva campos digitados)
     if (this._mode !== null) return;
     this._render();
   }
@@ -33,42 +33,54 @@ set hass(hass) {
   setConfig(config) { this._config = config; }
   getCardSize()      { return 3; }
 
-  // ── Pacotes a partir de sensor.correios_*_status ──────────────────────────
+  // ── Coleta pacotes pelo atributo codigo_objeto (independente do entity_id) ─
   _getPackages() {
     if (!this._hass) return [];
-    return Object.values(this._hass.states)
-      .filter(s => /^sensor\.correios_.+_status$/.test(s.entity_id))
-      .map(s => {
-        const code    = (s.attributes.codigo_objeto || "").toUpperCase();
-        const bsId    = `binary_sensor.correios_${code.toLowerCase()}_entregue`;
-        const delivered = this._hass.states[bsId]?.state === "on";
 
-        // Localização: string formatada pelo coordinator, fallback no objeto raw
-        let location = s.attributes.localizacao;
-        if (!location) {
-          const raw = s.attributes.localizacao_detalhada;
-          if (raw && typeof raw === "object") {
-            const nome   = raw.nome   || "";
-            const cidade = raw.cidade || "";
-            const uf     = raw.uf     || "";
-            if (nome && cidade) location = `${nome} — ${cidade}/${uf}`;
-            else if (cidade)    location = uf ? `${cidade}/${uf}` : cidade;
-            else if (nome)      location = nome;
-          }
+    // Todos os sensores que tenham o atributo marcador da integração
+    const sensors = Object.values(this._hass.states).filter(
+      s => s.entity_id.startsWith("sensor.") && s.attributes.codigo_objeto
+    );
+
+    // Todos os binary sensors com o mesmo marcador
+    const binarySensors = Object.values(this._hass.states).filter(
+      s => s.entity_id.startsWith("binary_sensor.") && s.attributes.codigo_objeto
+    );
+
+    return sensors.map(s => {
+      const code = (s.attributes.codigo_objeto || "").toUpperCase();
+
+      // Busca binary sensor com o mesmo código — independente do entity_id
+      const bs = binarySensors.find(
+        b => (b.attributes.codigo_objeto || "").toUpperCase() === code
+      );
+      const delivered = bs?.state === "on";
+
+      // Localização: string do coordinator, fallback no objeto raw
+      let location = s.attributes.localizacao;
+      if (!location) {
+        const raw = s.attributes.localizacao_detalhada;
+        if (raw && typeof raw === "object") {
+          const nome   = raw.nome   || "";
+          const cidade = raw.cidade || "";
+          const uf     = raw.uf     || "";
+          if (nome && cidade) location = `${nome} — ${cidade}/${uf}`;
+          else if (cidade)    location = uf ? `${cidade}/${uf}` : cidade;
+          else if (nome)      location = nome;
         }
+      }
 
-        return {
-          code,
-          name:       s.attributes.descricao || code,
-          status:     s.state,
-          location:   location || "",
-          lastUpdate: s.attributes.ultima_atualizacao || "",
-          delivered,
-        };
-      });
+      return {
+        code,
+        name:       s.attributes.descricao || code,
+        status:     s.state,
+        location:   location || "",
+        lastUpdate: s.attributes.ultima_atualizacao || "",
+        delivered,
+      };
+    });
   }
 
-  // ── Abre formulário de adição ─────────────────────────────────────────────
   _openAdd() {
     this._mode        = "add";
     this._editCode    = null;
@@ -78,11 +90,10 @@ set hass(hass) {
     this._render();
   }
 
-  // ── Abre formulário de edição — preenche estado ANTES do render ───────────
   _openEdit(pkg) {
     this._mode        = "edit";
     this._editCode    = pkg.code;
-    this._editDesc    = pkg.name;   // pré-carrega no estado, não via JS pós-render
+    this._editDesc    = pkg.name;
     this._editInterval = 60;
     this._formError   = "";
     this._render();
@@ -96,7 +107,6 @@ set hass(hass) {
     this._render();
   }
 
-  // ── Lê campos e chama add_package (cria ou atualiza) ─────────────────────
   async _submitForm() {
     const s        = this.shadowRoot;
     const codeRaw  = s.getElementById("input-code")?.value || "";
@@ -104,8 +114,9 @@ set hass(hass) {
     const desc     = (s.getElementById("input-desc")?.value || "").trim();
     const interval = parseInt(s.getElementById("input-interval")?.value) || 60;
 
-    if (!/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(code)) {
-      this._formError = "⚠️ Código inválido. Formato: AA123456789BR";
+    // Aceita Correios (AA123456789BR) e Total Express (TX...)
+    if (!/^([A-Z]{2}\d{9}[A-Z]{2}|TX[A-Z0-9]+)$/i.test(code)) {
+      this._formError = "⚠️ Código inválido. Formatos: AA123456789BR ou TX...";
       this._render();
       return;
     }
@@ -132,7 +143,6 @@ set hass(hass) {
     await this._hass.callService("correios_tracker", "remove_package", { tracking_code: code });
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
   _render() {
     const packages = this._getPackages();
     const isAdd    = this._mode === "add";
@@ -214,7 +224,7 @@ set hass(hass) {
     ${isAdd ? `
     <div>
       <label>Código de Rastreamento *</label>
-      <input id="input-code" placeholder="AA123456789BR" maxlength="13" autocomplete="off" />
+      <input id="input-code" placeholder="AA123456789BR ou TX..." maxlength="30" autocomplete="off" />
     </div>` : `
     <div class="edit-hint">Código: <strong>${this._editCode}</strong></div>`}
 
@@ -225,7 +235,7 @@ set hass(hass) {
     </div>
     <div>
       <label>Intervalo de atualização (minutos)</label>
-      <input id="input-interval" type="number" value="${this._editInterval}" min="15" max="1440" />
+      <input id="input-interval" type="number" value="${this._editInterval}" min="15" max="10000" />
     </div>
 
     ${this._formError ? `<div class="error-msg">${this._formError}</div>` : ""}
@@ -267,7 +277,7 @@ set hass(hass) {
       formOpen ? this._cancelForm() : this._openAdd();
     });
 
-    s.getElementById("btn-cancel")?.addEventListener("click", () => this._cancelForm());
+    s.getElementById("btn-cancel")?.addEventListener("click",  () => this._cancelForm());
     s.getElementById("btn-confirm")?.addEventListener("click", () => this._submitForm());
 
     s.getElementById("input-code")?.addEventListener("keydown", e => {
